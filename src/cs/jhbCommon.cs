@@ -9,10 +9,12 @@ using System;
 
 using System.Collections.Generic;
 using System.Reflection;
+using System.Linq;
 using System.Text;
 
 using System.Xml;
 using System.Xml.Serialization;
+using System.Xml.Linq;
 using System.IO;
 
 //using System.Security.Cryptography;
@@ -52,7 +54,48 @@ namespace jhblib
             var serializer = new XmlSerializer(typeof(T));
             serializer.Serialize(writer, that);
          }
-      }      
+      }
+
+      public static string Pretty(string sXml) {
+         using (var sw = new StringWriter()) {
+            using (var xtw = new XmlTextWriter(sw)) { //, Encoding.Unicode);
+               var doc = new XmlDocument();
+               doc.LoadXml(sXml);
+               xtw.Formatting = Formatting.Indented;
+               xtw.IndentChar = '\t';
+               doc.WriteContentTo(xtw);
+               xtw.Flush();
+               //sw.Flush();
+               return sw.ToString();
+            }
+         }
+      }
+
+      
+      // --------------------------------------------------------------------------------
+      // The Dictionary type is not serializable via XmlSerializer -- these two functions
+      // provide a way. The XML encoding is arbitrary so they will only work with each
+      // other: what you export with ExportDict can be imported with ImportDict, but 
+      // otherwise they don't work with any other serialization mechanisms.
+      // --------------------------------------------------------------------------------      
+      
+      public static string ExportDict<KeyT, TVal>(Dictionary<KeyT, TVal> D) {
+         return new XElement("Dictionary",
+            from d in D
+            select new XElement("item"
+               , new XAttribute("key", d.Key)
+               , new XAttribute("val", d.Value))
+         ).ToString();
+      }
+
+      // FKey and FVal are functions that provide a way to convert from an XAttribute object
+      // to TKey and TVal, respectively.
+      public static void ImportDict<TKey, TVal>(ref Dictionary<TKey, TVal> D, string sXml, Func<XAttribute, TKey> FKey, Func<XAttribute, TVal> FVal) {
+         XElement xe = XElement.Parse(sXml);
+         D = (from item in xe.Descendants("item") select item)
+             .ToDictionary(a => FKey(a.Attribute("key")),
+                           a => FVal(a.Attribute("val")));
+      } 
    }
 
    public class ArrayOp { // Array operations that .NET left out.
