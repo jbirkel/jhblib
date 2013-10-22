@@ -111,4 +111,7 @@ UpgradeLog*.XML
 *.zip
 bak.bat
 
+# Test files
+_test/
+
 
