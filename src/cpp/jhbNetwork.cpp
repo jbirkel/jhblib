@@ -54,7 +54,7 @@ msTicker _TIME;
 // ----------------------------------------------------------------------------
 // Logging
 // ----------------------------------------------------------------------------
-PrintProxy<char> _PP;
+static PrintProxy<char> _PP;
 
 void  net_SetLogFunc( net_LogFunc_t pfn ) {
    _PP.SetPrintFunction( pfn );
@@ -379,30 +379,6 @@ static DWORD WINAPI _pingThread( LPVOID lpParameter ) {
    return 0;
 }
 
-template <typename T> class AutoClose {
-public:
-   typedef int (_stdcall * int_close) (T h);
-   typedef int (_stdcall *void_close) (T h);   
-   
-   AutoClose( T handle, int_close close ) : _handle(handle), _close1( close ), _close2(0) {}
-  ~AutoClose() { 
-      if (_close1) _close1(_handle);
-      if (_close2) _close2(_handle);      
-   }
-   
-private:
-   T _handle;
-   
-    int_close _close1;
-   void_close _close2;   
-};
-
-
-// This is the bundle of data needed to cancel a ping test.
-class PingTest {
-   SOCKET s;
-};
-
 // WSAEFAULT         (10014) - The system detected an invalid pointer address in attempting to use a pointer argument in a call.
 // WSAEINVAL         (10022) - An invalid argument was supplied.
 // WSAENOTSOCK       (10038) - An operation was attempted on something that is not a socket.
@@ -418,9 +394,6 @@ class PingTest {
 //   be passed to CancelPingTest to terminate an in-progress ping test. 
 //-----------------------------------------------------------------------------
 DWORD StartPingTest( const char *pszAddr, int count, int len, pingTestCallback_t pfn, UINT *handle ) {
-
-   // init PingTestInstance
-   PingTest *pt = new PingTest();
    
    // Init ping config
    _pingTestCfg_t *pcfg = (_pingTestCfg_t *)new _pingTestCfg_t;
@@ -463,3 +436,26 @@ void CancelPingTest( UINT handle ) {
       _PP.printf( "CancelPingTest: closesocket returned %d, error %d\n", err, WSAGetLastError()); 
    }
 }
+
+
+
+// Start of an auto-ptr for handles?
+/*
+template <typename T> class AutoClose {
+public:
+   typedef int (_stdcall * int_close) (T h);
+   typedef int (_stdcall *void_close) (T h);   
+   
+   AutoClose( T handle, int_close close ) : _handle(handle), _close1( close ), _close2(0) {}
+  ~AutoClose() { 
+      if (_close1) _close1(_handle);
+      if (_close2) _close2(_handle);      
+   }
+   
+private:
+   T _handle;
+   
+    int_close _close1;
+   void_close _close2;   
+};
+*/
