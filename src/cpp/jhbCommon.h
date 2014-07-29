@@ -498,13 +498,10 @@ public:
    typedef STD_STRING(CH) chstring;
   
    void SetPrintFunction( PrintFunc_t pfn ) { _pfn = pfn; }   
-   //void SetCycleLengths ( int count = 1, int len = 0 } { _cycleCnt = count; _cycleLen = len; }
 
    timefmt_e SetTimestamp(bool      b) { return SetTimestamp( b ? TFMT_TIMEONLY : TFMT_NONE ); }
    timefmt_e SetTimestamp(timefmt_e e) { timefmt_e old = _tfmt; _tfmt = e; return old;}
 
-   static void CycleLogFiles( char *filename, int maxCount, int maxLength );
-   
    size_t SetPrintBufSize( size_t nChars ) { _bufSize = nChars; }
    
    void EnableConsole(bool b) { _bConOut = b; }
@@ -534,9 +531,6 @@ private:
    }
    
    void _print(const CH *psz) {
-      
-      //CycleLogFiles(  );
-   
       CH ts[80]; int tsLen = _timestamp(ts);
       if (_pfn) {
          chstring s;
