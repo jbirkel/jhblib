@@ -44,6 +44,7 @@
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <assert.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -103,6 +104,8 @@ std::string ReadTextFile( const char *filePath );
 
 int ReadBinaryFile( const char    *filePath, BYTE *p, size_t cb );
 int ReadBinaryFile( const wchar_t *filePath, BYTE *p, size_t cb );
+
+void CycleLogFiles( const char *filename, int maxCount, int maxLength );
 
 // ----------------------------------------------------------------------------
 //
@@ -338,6 +341,55 @@ public:
 };
 
 // ----------------------------------------------------------------------------
+// Smart Pointer
+// ----------------------------------------------------------------------------
+
+// This the basis of an smart (auto) pointer class.  Generally, smart pointer 
+// differ only in the function used to free memory
+#define SMART_POINTER_CORE                         \
+      operator T    (        ) { return      _p; } \
+   T  operator ->   (        ) { return      _p; } \
+   T* operator &    (        ) { return     &_p; } \
+   T& operator =    (T p     ) { return  _p = p; } \
+   T  operator +    (size_t i) { return  _p + i; } \
+      operator bool (        ) { return 0 != _p; } \
+private:                                           \
+   T _p; 
+   
+// Auto-ptr for Service Control Manager (SCM) handles.
+class ScHandle {
+public:
+  typedef SC_HANDLE T;
+
+   ScHandle( SC_HANDLE h ) {                      _h = h; }   
+   ScHandle() {                                   _h = 0; }
+  ~ScHandle() { if (_h) CloseServiceHandle( _h ); _h = 0; }   
+  
+      operator T    (   ) { return  _h     ; }  
+   T* operator &    (   ) { return &_h     ; }
+   T& operator =    (T h) { return  _h  = h; }
+      operator bool (   ) { return  _h != 0; } 
+   
+private:
+   T _h;  
+};
+
+//
+// Anti-memory leak class for working with WTSAPI32 pointers.
+//
+#if defined(WTS_CURRENT_SERVER) && !defined(__CWtsPtr)
+#define __CWtsPtr
+template<class T> class CWtsPtr {
+public:
+   CWtsPtr() {                      _p = 0; }
+  ~CWtsPtr() { WTSFreeMemory( _p ); _p = 0; }     
+   SMART_POINTER_CORE 
+};
+#endif
+
+
+
+// ----------------------------------------------------------------------------
 //
 // Provides arbitrary timing numbers in user-specified units.
 //
@@ -425,25 +477,38 @@ typedef __Timer<usTicker> usTimer;  // microsecond timer
 
 #define DEF_BUF_SIZE 0x1000
 
+enum timefmt_e
+{ TFMT_NONE     = 0         // do not prepend a timestamp to log lines
+, TFMT_TIMEONLY = 1         // time-only: 123456.789
+, TFMT_DATETIME = 2         // date and time: 20140308-123456.789
+, TFMT_TYPEMASK = 0x0FF     // mask off flags
+, TFMT_NOMS     = 0x100     // if set, don't include milliseconds 
+};
+
+//timefmt_e operator & (timefmt_e e1, timefmt_e e2);
+//timefmt_e operator | (timefmt_e e1, timefmt_e e2);
+
 template <typename CH> class PrintProxy {
 public:
    typedef void (* PrintFunc_t) ( const CH *psz );      
    
    PrintProxy( PrintFunc_t pfn, size_t nChars = DEF_BUF_SIZE ) : _pfn(pfn ), _bufSize(nChars) {}
    PrintProxy(                  size_t nChars = DEF_BUF_SIZE ) : _pfn(NULL), _bufSize(nChars) {}
-   //const PrintProxy( PrintFunc_t pfn, size_t nChars = DEF_BUF_SIZE ) : _pfn(pfn ), _bufSize(nChars) {}
-   //const PrintProxy(                  size_t nChars = DEF_BUF_SIZE ) : _pfn(NULL), _bufSize(nChars) {}   
+
+   typedef STD_STRING(CH) chstring;
   
    void SetPrintFunction( PrintFunc_t pfn ) { _pfn = pfn; }   
-   
-   void SetTimestamp( bool b ) { _tstamp = b; }
+   //void SetCycleLengths ( int count = 1, int len = 0 } { _cycleCnt = count; _cycleLen = len; }
+
+   timefmt_e SetTimestamp(bool      b) { return SetTimestamp( b ? TFMT_TIMEONLY : TFMT_NONE ); }
+   timefmt_e SetTimestamp(timefmt_e e) { timefmt_e old = _tfmt; _tfmt = e; return old;}
+
+   static void CycleLogFiles( char *filename, int maxCount, int maxLength );
    
    size_t SetPrintBufSize( size_t nChars ) { _bufSize = nChars; }
    
-   void print ( const CH * sz ) {   
-       _print( sz );
-   }
-   
+   void EnableConsole(bool b) { _bConOut = b; }
+
    void printf ( const CH * format, ... ) {
       va_list ap;
       va_start( ap, format );
@@ -455,26 +520,46 @@ public:
       _print( _fmtVToStr( format, ap ).c_str() );
    }
    
-   
 private:
    size_t      _bufSize; 
-   bool        _tstamp;
+   timefmt_e   _tfmt;
    PrintFunc_t _pfn;  
+   bool        _bConOut;
    
    void _init() {
-      _pfn = NULL;
       _bufSize = DEF_BUF_SIZE;
+      _tfmt = TFMT_DATETIME;
+      _pfn = NULL;
+      _bConOut = false;
    }
    
-   void _print( const CH *psz ) { if (_pfn) _pfn( psz ); }
+   void _print(const CH *psz) {
+      
+      //CycleLogFiles(  );
    
+      CH ts[80]; int tsLen = _timestamp(ts);
+      if (_pfn) {
+         chstring s;
+         if (0 < tsLen) { s = chstring(ts); }
+         s += chstring(psz);
+         _pfn(s.c_str()); 
+      }
+      if (_bConOut) { _conOut(psz); }
+   }
+   void _conOut(LPCSTR  psz) {  printf( "%s", psz); }
+   void _conOut(LPCWSTR psz) { wprintf(L"%s", psz); }
+
    std::string _fmtVToStr( const char *format, va_list ap ) {
       std::string s( _bufSize, 0 );
-      int len  = _timestamp( s );
+      //int len  = _timestamp( &s[0] );
+      //s[len++] = ' ';
+      
 #ifdef UNDER_CE
-      len += _vsnprintf( &s[len], s.size()-len, format, ap );  
+      //len += _vsnprintf( &s[len], s.size()-len, format, ap );  
+      _vsnprintf( &s[0], s.size(), format, ap );  
 #else
-      len +=  vsnprintf( &s[len], s.size()-len, format, ap );  
+      //len +=  vsnprintf( &s[len], s.size()-len, format, ap );  
+      vsnprintf(&s[0], s.size(), format, ap);
 #endif
       //if (-1 < len) s.resize( (size_t)len );
       return s;
@@ -483,85 +568,44 @@ private:
 #ifdef _WIN32
    std::wstring _fmtVToStr( const wchar_t *format, va_list ap ) {
       std::wstring s( _bufSize, 0 );
-      int len  = _timestamp( s );   
-          len += _vsnwprintf( &s[len], s.size()-len, format, ap );   // WIN-specific  
-      //if (-1 < len) s.resize( (size_t)len );   
+      _vsnwprintf( &s[0], s.size(), format, ap );   // WIN-specific  
       return s;
    }
    
-   int _timestamp( std:: string &s ) {
-      if (!_tstamp) return 0;
-      SYSTEMTIME st; GetSystemTime( &st ); s.resize( 40 );
-      return _snprintf( &s[0], s.size(), "%02d:%02d:%02d.%03d", st.wHour, st.wMinute, st.wSecond, st.wMilliseconds );   
+   // Buffer must be large enough for the time/date string.  
+   // E.g., "225256.812" or "20140102-225256.812"
+   int _timestamp( LPSTR buf ) {
+      
+      timefmt_e ttype = (timefmt_e)(_tfmt & TFMT_TYPEMASK);
+      bool fNoMS = (0 != (_tfmt & TFMT_NOMS));
+
+      if (TFMT_NONE == ttype) { 
+         return 0; 
+      }
+
+      SYSTEMTIME st; GetLocalTime(&st);
+      LPSTR p = buf;
+      if (TFMT_DATETIME == ttype) {
+         p += sprintf(p, "%4d%02d%02d-", st.wYear, st.wMonth, st.wDay);
+      }
+      p += sprintf(p, "%02d%02d%02d", st.wHour, st.wMinute, st.wSecond);
+      if (!fNoMS) {
+         p += sprintf(p, ".%03d", st.wMilliseconds);
+      }
+      p += sprintf(p, " ");  // add a space at the end
+      return (int)strlen(buf);
    }
       
-   int _timestamp( std::wstring &s ) {
-      if (!_tstamp) return 0;
-      SYSTEMTIME st; GetSystemTime( &st ); s.resize( 40 ); 
-      return _snwprintf( &s[0], s.size(), L"%02d:%02d:%02d.%03d", st.wHour, st.wMinute, st.wSecond, st.wMilliseconds );   
+   int _timestamp( LPWSTR wbuf ) {
+      char buf[40]; _timestamp(buf);  wcscpy( wbuf, CvtStrW(buf));
+      return (int)wcslen( wbuf );
    }
 #else
    int _timestamp( std:: string &s ) { return s = "<tstamp-notimpl>" ; }
    //int _timestamp( std::wstring &s ) { return _snwprintf( &s[0], s.capacity(), "<tstamp>" ); }
 #endif
-   
+
 };
-
-
-/*
-class PrintProxy {
-public:
-   typedef void (* PrintFuncA_t) ( const  char   *psz );      
-   typedef void (* PrintFuncW_t) ( const wchar_t *psz );
-   
-   const PrintProxy( PrintFuncW_t pfn, size_t nChars = DEF_BUF_SIZE ) : _pfnA(NULL), _pfnW(pfn ), _bufSize(nChars) {}
-   const PrintProxy( PrintFuncA_t pfn, size_t nChars = DEF_BUF_SIZE ) : _pfnA(pfn ), _pfnW(NULL), _bufSize(nChars) {}
-   const PrintProxy(                   size_t nChars = DEF_BUF_SIZE ) : _pfnA(NULL), _pfnW(NULL), _bufSize(nChars) {}
-  
-   void SetPrintFunction( PrintFuncA_t pfn ) { _pfnA = pfn; }   
-   void SetPrintFunction( PrintFuncW_t pfn ) { _pfnW = pfn; }
-   
-   void SetTimestamp( bool b ) { _tstamp = b; }
-   
-   size_t SetPrintBufSize( size_t nChars ) { _bufSize = nChars; }
-   
-   template <typename CH>
-   void printf ( const CH * format, ... ) {
-      va_list ap;
-      va_start( ap, format );
-      _print( _fmtVToStr( format, ap ).c_str() );
-      va_end( ap );    
-   }
-   
-   template <typename CH>   
-   void printfv ( const CH * format, va_list ap ) {
-      _print( _fmtVToStr( format, ap ).c_str() );
-   }
-   
-private:
-   size_t _bufSize; 
-   
-   bool _tstamp;
-
-   PrintFuncA_t _pfnA;  
-   PrintFuncW_t _pfnW;  
-   
-   void _init() {
-      _pfnA = NULL;
-      _pfnW = NULL;
-      _bufSize = DEF_BUF_SIZE;
-   }
-   
-   void _print( const  char   *psz ) { if (_pfnA) _pfnA( psz ); else if (_pfnW) _pfnW( CvtStr<wchar_t,CP_UTF8>( psz )); }
-   void _print( const wchar_t *psz ) { if (_pfnW) _pfnW( psz ); else if (_pfnA) _pfnA( CvtStr<char   ,CP_ACP >( psz )); }
-   
-   std:: string _fmtVToStr( const char    *format, va_list Args );
-   std::wstring _fmtVToStr( const wchar_t *format, va_list Args );
-   
-   int _timestamp( std:: string &s );   
-   int _timestamp( std::wstring &s );
-};
-*/
 
 
 // ----------------------------------------------------------------------------
@@ -800,6 +844,73 @@ typedef CvtStr<TCHAR>   CvtStrT;
 #endif
 
 #endif // _WIN32
+
+// Interface required by class CritSection
+class _critsect_usable {
+public:
+   virtual bool Acquire() = 0;
+   virtual void Release() = 0;
+};
+
+// ----------------------------------------------------------------------------
+class Mux : public _critsect_usable {
+public:
+   Mux()             { _h = CreateMutex (NULL, FALSE, NULL); }
+   Mux(LPCSTR  Name) { _h = CreateMutexA(NULL, FALSE, Name); }
+   Mux(LPCWSTR Name) { _h = CreateMutexW(NULL, FALSE, Name); }
+
+   ~Mux() { Release(); CloseHandle(_h); }
+
+   bool Acquire(DWORD msTimeout) {
+      return WAIT_OBJECT_0 == WaitForSingleObject(_h, msTimeout);
+   }
+
+   // _critsect_usable
+   virtual bool Acquire() { return WAIT_OBJECT_0 == WaitForSingleObject(_h, INFINITE); }
+   virtual void Release() { ReleaseMutex(_h); }
+
+private:
+   HANDLE _h;
+};
+
+// Like Mux but uses a Windows critical section object, a light-weight mutex
+// that cannot be named or used cross-process but which is more efficient than
+// a Mutex.
+class MuxLite : public _critsect_usable  {
+public:
+       MuxLite() { InitializeCriticalSection(&_cs); }
+      ~MuxLite() {     DeleteCriticalSection(&_cs); }
+
+      bool TryEnter() { return !!TryEnterCriticalSection(&_cs); }
+
+  // _critsect_usable     
+  void Release() {      LeaveCriticalSection(&_cs); }
+  bool Acquire() {      EnterCriticalSection(&_cs); return true; }
+
+
+private:
+   CRITICAL_SECTION _cs;
+};
+
+// Acquires a Mux or MuxLite for the entire scope of the object.
+// NOTE: MUX is intended for use with only Mux and MuxLite classes.
+//template <typename MUX> class CritSection {
+class CriticalSection {
+public:
+   typedef _critsect_usable mux_t;
+
+   CriticalSection(mux_t &mux) : _mux(mux) { _mux.Acquire(); _bAcquired = true; }
+   void Release()                          { _mux.Release(); _bAcquired = false; }
+
+   ~CriticalSection() { Release(); }
+
+   // Don't allow default construction.
+   CriticalSection() : _mux(*(mux_t*)0) { assert(false); }
+
+private:
+   mux_t &_mux;
+   bool   _bAcquired;
+};
 
 
 // ----------------------------------------------------------------------------

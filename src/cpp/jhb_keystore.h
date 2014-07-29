@@ -126,7 +126,10 @@ public:
    bool SetVal( _pch_t name, LPCSTR  v, size_t maxlen ) { return _setVal( name, v, _szLenMax(v,maxlen)); }     
    
    bool SetVal( _pch_t name, LPCWSTR v                ) { return _setVal( name, v, wcslen(v) + 1 ); } 
-   bool SetVal( _pch_t name, LPCWSTR v, size_t maxlen ) { return _setVal( name, v, _szLenMax(v,maxlen)); }    
+   bool SetVal( _pch_t name, LPCWSTR v, size_t maxlen ) { return _setVal( name, v, _szLenMax(v,maxlen)); }   
+
+   template <typename T> 
+   bool SetVal(_pch_t name, STD_STRING(T) s) { return _setVal(name, s.c_str(), s.size() + 1); }
       
    // ----------------      
    // Get   
@@ -137,12 +140,24 @@ public:
       size_t size = sizeof v;
       return _getVal( name, (LPBYTE)&v, size );      
    }    
-   
+
+   // -- strings (auto-sized)
+   template <typename T> bool GetVal(_pch_t name, STD_STRING(T) &s) {
+
+      // Get the length of the value's data.
+      size_t size = 0;
+      if (_getVal(name, (BYTE*)0, size)) {
+         s.resize(size / sizeof(s[0]));
+         return _getVal(name, &s[0], size);
+      }
+      return false;
+   }
+
    // -- arrays (read into an auto-sizing vector)
    template <typename T> bool GetVal( _pch_t name, std::vector<T> &v ) { 
       
       // Get the length of the value's data.
-      DWORD size = 0;
+      size_t size = 0;
       if (_getVal( name, 0, size )) {      
          v.resize( size / sizeof(T) ); 
          return _getVal( name, &v[0], size );

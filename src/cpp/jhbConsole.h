@@ -63,19 +63,21 @@ class cli {
 public:
 
    enum Error_e
-   { ERR_COMMENT    =  1   // Comment line encountered.  Ignored, but not an error.   
-   , ERR_NOERROR    =  0   // Success
-   , ERR_NOCMDLINE  = -1   // Inputted command line was blank.
-   , ERR_CMDUNKNOWN = -2   // Arg 0 of command line did not match any known command name.
-   , ERR_MISSINGARG = -3   // Required argument not present.
-   , ERR_INVALIDARG = -4   // Provided argument led to an error.
-   , ERR_GENERAL    = -5   // Unspecified error.
-   , ERR_MEMORY     = -6   // Memory allocation error.      
-   , ERR_READFAIL   = -7   // Read operation failed.   
-   , ERR_WRITEFAIL  = -8   // Write operation failed.
-   , ERR_OPENFAIL   = -9   // Open operation failed.   
-   , ERR_INTERNAL   = -10  // Internal error.      
-   , ERR_LIBRARY    = -11  // A call to an external library failed.
+   { ERR_STAYRESIDENT =  2  // Not an error. Special value used by $r command.
+   , ERR_COMMENT      =  1   // Comment line encountered.  Ignored, but not an error.   
+   , ERR_NOERROR      =  0   // Success
+   , ERR_NOCMDLINE    = -1   // Inputted command line was blank.
+   , ERR_CMDUNKNOWN   = -2   // Arg 0 of command line did not match any known command name.
+   , ERR_MISSINGARG   = -3   // Required argument not present.
+   , ERR_INVALIDARG   = -4   // Provided argument led to an error.
+   , ERR_GENERAL      = -5   // Unspecified error.
+   , ERR_MEMORY       = -6   // Memory allocation error.      
+   , ERR_INTERNAL     = -7   // Internal error.      
+   , ERR_LIBRARY      = -8   // A call to an external library failed.
+   , ERR_READFAIL     = -9   // Read operation failed.   
+   , ERR_WRITEFAIL    = -10  // Write operation failed.
+   , ERR_OPENFAIL     = -11  // Open operation failed.   
+   , ERR_LOCKFAIL     = -12  // Attempt to acquire or lock a resource failed.
    } ;
 
    typedef void *Param_t;

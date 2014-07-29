@@ -4,6 +4,9 @@ Microsoft Visual Studio Solution File, Format Version 10.00
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "jhblib", "jhblib.vcproj", "{8C649B0E-3C7B-47FE-888E-615F47CD342E}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "jhc", "..\jhc\jhc.vcproj", "{141FCBCE-511D-4358-8AD1-D4B80D1251CC}"
+	ProjectSection(ProjectDependencies) = postProject
+		{8C649B0E-3C7B-47FE-888E-615F47CD342E} = {8C649B0E-3C7B-47FE-888E-615F47CD342E}
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

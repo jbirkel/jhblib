@@ -264,8 +264,10 @@ void DumpKey( ValKeyA &vk ) {
    printf("\n");
 }
 
-void ConOut ( const char    *sz ) { printf( "%s", sz ); }
+void ConOutA( const char    *sz ) { printf( "%s", sz ); }
 void ConOutW( const wchar_t *sz ) { printf( "%S", sz ); }
+void ConOut( const char    *sz ) { ConOutA( sz ); }
+void ConOut( const wchar_t *sz ) { ConOutW( sz ); }
 
 cli::Error_e cmdValKey( CLIARGS args, cli::Param_t prm) {
 
@@ -342,6 +344,30 @@ cli::Error_e cmdZTest( CLIARGS args, cli::Param_t prm) {
    return cli::ERR_GENERAL;
 }
 
+cli::Error_e cmdCycLog( CLIARGS args, cli::Param_t prm) {
+   if (args.size() < 4) {
+      printf( "***ERROR: You must enter: <filename>, <max-count>, <max-length>\n" );
+      return cli::ERR_INVALIDARG;
+   }
+   
+   LPCTSTR pszFilename  =          args[1].c_str()        ;
+   int       nMaxCount  = _tcstol( args[2].c_str(), 0, 0 );
+   int       nMaxLength = _tcstol( args[3].c_str(), 0, 0 );
+   
+   CycleLogFiles( CvtStrA( pszFilename ), nMaxCount, nMaxLength );
+
+   return cli::ERR_GENERAL;
+}
+
+#include <stdio.h>
+#include <stdlib.h>
+cli::Error_e cmdGetCwd( CLIARGS args, cli::Param_t prm) {
+   TCHAR cwd[MAX_PATH+1];
+   GetCurrentDirectory( NELEM(cwd), cwd );
+   _tprintf( _T("CWD: %s\n"), cwd );
+   return cli::ERR_GENERAL;
+}
+
 
 // ============================================================================ 
 // Command table.
@@ -372,6 +398,12 @@ cli::CmdSpec_t cliCommands[] =
                        , _T("<1> - name (full path) of DLL\n")
                        , _T("<2> - *r (register) or u (unregister)\n")
                        }
+,{ _T("clf"), cmdCycLog, _T("Cycle log file.") 
+                       , _T("<1> - name (full path) of file\n")
+                         _T("<2> - max count\n")
+                         _T("<3> - max length\n")
+                       }
+,{ _T("cwd"), cmdGetCwd, _T("Get current working directory.") }
 ,{ _T("z")  , cmdZTest, _T("Arbitrary test code.") }                       
 };
 

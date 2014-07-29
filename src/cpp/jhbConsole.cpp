@@ -89,20 +89,25 @@ cli::Error_e CLI_Load ( std::vector<tstring> args, cli::Param_t param ) {
    
    static char szLine[0x400];
    *szLine = '\0';
+   cli::Error_e eRet = cli::ERR_NOERROR;
    while (fgets( szLine, NELEM(szLine)-1, f )) {
       if (Cli.IsEcho()) { _PP.printf( ">%s", szLine ); }
-      Cli.Exec( CvtStrT ( szLine ));
+      cli::Error_e e = Cli.Exec(CvtStrT(szLine));
+      if (cli::ERR_NOCMDLINE != e) {
+         eRet = e;
+      }
    } 
-   
-   return cli::ERR_NOERROR;
+
+   fclose(f);
+   return eRet;
 }
 
-cli::Error_e CLI_Comment ( std::vector<tstring> args, cli::Param_t param ) {
+cli::Error_e CLI_Comment ( std::vector<tstring> args, cli::Param_t ) {
    return cli::ERR_COMMENT;
 }
 
 // Prints some generally useful information about the system:
-cli::Error_e CLI_Info ( std::vector<tstring> args, cli::Param_t param ) {
+cli::Error_e CLI_Info ( std::vector<tstring> args, cli::Param_t ) {
 
    time_t tt; time( &tt );
    printf( "Time: %s", asctime( localtime( &tt )));   // includes \n
@@ -116,6 +121,9 @@ cli::Error_e CLI_Info ( std::vector<tstring> args, cli::Param_t param ) {
    return cli::ERR_NOERROR;
 }
 
+cli::Error_e CLI_Stay ( std::vector<tstring> args, cli::Param_t ) {
+   return cli::ERR_STAYRESIDENT;
+}
 
 
 // Prototype only: can't define it here because it references the 
@@ -140,8 +148,14 @@ static cli::CmdSpec_t cliBuiltIns[] =
 ,{ _T("$e"), CLI_Echo   , _T("Enables or disables command echoing.  (For command files.)")
                         , _T("<1> - 0*(disable) or 1(enable).  [DEF:0]")                                        
                         }                                        
-,{ _T("$i"), CLI_Info   , _T("Information.)")
+,{ _T("$i"), CLI_Info   , _T("Information.")
                         }  
+,{ _T("$r"), CLI_Stay   , _T("Keep resident after initial command line.")
+                        , _T("")                                        
+                        , _T("Normally, if any arguments appear on the initial command line, the program")                                                                
+                          _T("executes the command and then exit. If this command is used in this manner the") 
+                          _T("program will stay resident instead of exiting.")                                                                                        
+                        }                          
 };
 
 // ----------------------------------------------------------------------------
@@ -220,7 +234,8 @@ size_t ParseArgs( const CH *szLine, std::vector<STRING_T(CH)> &args ) {
 
    args.clear();
    
-   STRING_T(CH) line( szLine );   
+   STRING_T(CH) line( szLine ); 
+   line += _T("\n");  // Make sure line is terminated.
    Unquote( line );   
    
    size_t pos = 0;
@@ -286,8 +301,21 @@ int cli::Main( int argc, TCHAR* argv[] )  {
 
    // If there is an initial command, execute it and exit.
    if (1 < argc) {  
-      Exec( argc - 1, &argv[1] );  
-      return 0;       
+      
+      Error_e err = Exec( argc - 1, &argv[1] );
+      
+      // Dump help if invalid command.
+      if (ERR_CMDUNKNOWN ==  err) {
+      
+         printf( "\n***ERROR: Unknown command.\n\n" );      
+         std::vector<tstring> args;
+         CLI_Help( args, (cli::Param_t)this );
+      }
+      
+      // Don't exit if $r is used.
+      if (ERR_STAYRESIDENT !=  err) {      
+        return 0;       
+      }
    }
    
    // Start the internal command line.

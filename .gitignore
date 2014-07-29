@@ -110,6 +110,7 @@ UpgradeLog*.XML
 # Other backup files.
 *.zip
 bak.bat
+*.bak
 
 # Test files
 _test/
